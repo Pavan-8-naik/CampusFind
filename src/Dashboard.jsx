@@ -1,285 +1,180 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "./firebase";
 
 function Dashboard({ onBack }) {
-  const [activeTab, setActiveTab] = useState("All");
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const reports = [
-    {
-      id: 1,
-      name: "Black Wallet",
-      type: "Lost",
-      status: "Searching",
-      location: "Central Library",
-      date: "Today",
-      icon: "👛",
-    },
-    {
-      id: 2,
-      name: "iPhone 15",
-      type: "Lost",
-      status: "Potential Match",
-      location: "Block A",
-      date: "Yesterday",
-      icon: "📱",
-    },
-    {
-      id: 3,
-      name: "Blue Notebook",
-      type: "Found",
-      status: "Returned",
-      location: "Library",
-      date: "2 days ago",
-      icon: "📓",
-    },
-  ];
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "items"),
+      (snapshot) => {
+        const firestoreItems = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
 
-  const filteredReports =
-    activeTab === "All"
-      ? reports
-      : reports.filter((report) => report.type === activeTab);
+        setItems(firestoreItems);
+        setLoading(false);
+      },
+      (error) => {
+        console.error("Error loading dashboard data:", error);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const totalItems = items.length;
+
+  const lostItems = items.filter(
+    (item) => item.type === "Lost"
+  ).length;
+
+  const foundItems = items.filter(
+    (item) => item.type === "Found"
+  ).length;
+
+  const matchedItems = Math.min(lostItems, foundItems);
+
+  const recentItems = [...items]
+    .sort((a, b) => {
+      const dateA = a.createdAt?.seconds || 0;
+      const dateB = b.createdAt?.seconds || 0;
+      return dateB - dateA;
+    })
+    .slice(0, 5);
 
   return (
     <div className="dashboard-page">
+      <div className="dashboard-container">
 
-      {/* TOP BAR */}
-      <div className="dashboard-topbar">
-
-        <button className="back-btn" onClick={onBack}>
-          ← Back to CampusFind
-        </button>
-
-        <div className="report-logo">
-          Campus<span>Find</span>
-        </div>
-
-      </div>
-
-      {/* MAIN */}
-      <div className="dashboard-wrapper">
-
-        {/* HEADER */}
         <div className="dashboard-header">
-
           <div>
-            <p className="small-title">
-              MY DASHBOARD
-            </p>
-
-            <h1>
-              Welcome back 👋
-            </h1>
-
-            <p>
-              Track your lost and found reports in one place.
-            </p>
+            <h1>Dashboard</h1>
+            <p>Track campus lost and found reports.</p>
           </div>
 
-          <button
-            className="primary-btn"
-            onClick={() => alert("Report options coming next!")}
-          >
-            + New Report
-          </button>
-
+          {onBack && (
+            <button onClick={onBack} className="back-button">
+              ← Back
+            </button>
+          )}
         </div>
 
-        {/* STATS */}
-        <div className="dashboard-stats">
-
-          <div className="stat-card">
-            <div className="stat-icon purple">
-              📋
-            </div>
-            <div>
-              <strong>3</strong>
-              <span>Total Reports</span>
-            </div>
+        {loading ? (
+          <div className="dashboard-loading">
+            Loading dashboard...
           </div>
+        ) : (
+          <>
+            <div className="dashboard-stats">
 
-          <div className="stat-card">
-            <div className="stat-icon orange">
-              🔎
-            </div>
-            <div>
-              <strong>2</strong>
-              <span>Still Searching</span>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon green">
-              ✓
-            </div>
-            <div>
-              <strong>1</strong>
-              <span>Items Returned</span>
-            </div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-icon blue">
-              🤝
-            </div>
-            <div>
-              <strong>2</strong>
-              <span>Potential Matches</span>
-            </div>
-          </div>
-
-        </div>
-
-        {/* REPORTS SECTION */}
-        <section className="dashboard-section">
-
-          <div className="dashboard-section-heading">
-
-            <div>
-              <h2>
-                My Reports
-              </h2>
-
-              <p>
-                View and manage your submitted reports.
-              </p>
-            </div>
-
-            <div className="dashboard-tabs">
-
-              <button
-                className={activeTab === "All" ? "active" : ""}
-                onClick={() => setActiveTab("All")}
-              >
-                All
-              </button>
-
-              <button
-                className={activeTab === "Lost" ? "active" : ""}
-                onClick={() => setActiveTab("Lost")}
-              >
-                Lost
-              </button>
-
-              <button
-                className={activeTab === "Found" ? "active" : ""}
-                onClick={() => setActiveTab("Found")}
-              >
-                Found
-              </button>
-
-            </div>
-
-          </div>
-
-          {/* REPORT LIST */}
-
-          <div className="dashboard-reports">
-
-            {filteredReports.map((report) => (
-
-              <div className="dashboard-report" key={report.id}>
-
-                <div className="dashboard-report-icon">
-                  {report.icon}
+              <div className="stat-card">
+                <div className="stat-number">
+                  {totalItems}
                 </div>
-
-                <div className="dashboard-report-info">
-
-                  <div className="dashboard-report-title">
-
-                    <span
-                      className={
-                        report.type === "Lost"
-                          ? "lost-badge"
-                          : "found-badge"
-                      }
-                    >
-                      {report.type.toUpperCase()}
-                    </span>
-
-                    <h3>
-                      {report.name}
-                    </h3>
-
-                  </div>
-
-                  <div className="dashboard-report-meta">
-
-                    <span>
-                      📍 {report.location}
-                    </span>
-
-                    <span>
-                      🕒 {report.date}
-                    </span>
-
-                  </div>
-
+                <div className="stat-label">
+                  Total Reports
                 </div>
-
-                <div className="dashboard-status">
-
-                  <span
-                    className={
-                      report.status === "Returned"
-                        ? "status returned"
-                        : report.status === "Potential Match"
-                        ? "status match"
-                        : "status searching"
-                    }
-                  >
-                    {report.status}
-                  </span>
-
-                </div>
-
-                <button className="report-view-btn">
-                  View →
-                </button>
-
               </div>
 
-            ))}
+              <div className="stat-card">
+                <div className="stat-number">
+                  {lostItems}
+                </div>
+                <div className="stat-label">
+                  Lost Items
+                </div>
+              </div>
 
-          </div>
+              <div className="stat-card">
+                <div className="stat-number">
+                  {foundItems}
+                </div>
+                <div className="stat-label">
+                  Found Items
+                </div>
+              </div>
 
-        </section>
+              <div className="stat-card">
+                <div className="stat-number">
+                  {matchedItems}
+                </div>
+                <div className="stat-label">
+                  Potential Matches
+                </div>
+              </div>
 
-        {/* SMART MATCH CARD */}
+            </div>
 
-        <section className="dashboard-match">
+            <div className="dashboard-section">
+              <div className="section-heading">
+                <h2>Recent Reports</h2>
+              </div>
 
-          <div className="dashboard-match-icon">
-            ✨
-          </div>
+              {recentItems.length === 0 ? (
+                <p>No reports available yet.</p>
+              ) : (
+                <div className="dashboard-reports">
 
-          <div>
+                  {recentItems.map((item) => (
+                    <div
+                      className="dashboard-report-card"
+                      key={item.id}
+                    >
 
-            <p className="small-title">
-              SMART MATCH
-            </p>
+                      <div className="dashboard-report-image">
+                        {item.photoURL ? (
+                          <img
+                            src={item.photoURL}
+                            alt={item.itemName}
+                          />
+                        ) : (
+                          <div className="no-image">
+                            🔍
+                          </div>
+                        )}
+                      </div>
 
-            <h2>
-              We found potential matches for you
-            </h2>
+                      <div className="dashboard-report-info">
 
-            <p>
-              CampusFind has detected similar items based on
-              category, description and location.
-            </p>
+                        <span
+                          className={
+                            item.type === "Lost"
+                              ? "report-type lost"
+                              : "report-type found"
+                          }
+                        >
+                          {item.type}
+                        </span>
 
-          </div>
+                        <h3>
+                          {item.itemName}
+                        </h3>
 
-          <button
-            className="secondary-btn"
-            onClick={() => alert("Smart Match page coming next!")}
-          >
-            View Matches →
-          </button>
+                        <p>
+                          📍 {item.location}
+                        </p>
 
-        </section>
+                        <p>
+                          {item.description}
+                        </p>
+
+                      </div>
+
+                    </div>
+                  ))}
+
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
       </div>
-
     </div>
   );
 }

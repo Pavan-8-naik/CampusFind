@@ -1,74 +1,525 @@
+import { useEffect, useState } from "react";
 import "./App.css";
+
 import ReportLost from "./ReportLost";
 import ReportFound from "./ReportFound";
 import Browse from "./Browse";
 import Dashboard from "./Dashboard";
 import Login from "./Login";
-import { useState } from "react";
+
+import {
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  limit,
+} from "firebase/firestore";
+
+import { db } from "./firebase";
 
 function App() {
   const [page, setPage] = useState("home");
+  const [recentItems, setRecentItems] = useState([]);
 
-  // REPORT LOST
-  if (page === "lost") {
-    return <ReportLost onBack={() => setPage("home")} />;
-  }
+  const [allItems, setAllItems] = useState([]);
+  const [matchLoading, setMatchLoading] = useState(true);
 
-  // REPORT FOUND
-  if (page === "found") {
-    return <ReportFound onBack={() => setPage("home")} />;
-  }
+  // Load recent reports
+  useEffect(() => {
+    const itemsQuery = query(
+      collection(db, "items"),
+      orderBy("createdAt", "desc"),
+      limit(3)
+    );
 
-  // BROWSE
-  if (page === "browse") {
-    return <Browse onBack={() => setPage("home")} />;
-  }
+    const unsubscribe = onSnapshot(
+      itemsQuery,
+      (snapshot) => {
+        const firestoreItems = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
 
-  // DASHBOARD
-  if (page === "dashboard") {
-    return <Dashboard onBack={() => setPage("home")} />;
-  }
+        setRecentItems(firestoreItems);
+      },
+      (error) => {
+        console.error("Error loading recent reports:", error);
+      }
+    );
 
-  // LOGIN
-  if (page === "login") {
-    return <Login onBack={() => setPage("home")} />;
-  }
+    return () => unsubscribe();
+  }, []);
 
-  // HOME
+  // Load all items for Smart Match
+  useEffect(() => {
+    const itemsQuery = query(
+      collection(db, "items"),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(
+      itemsQuery,
+      (snapshot) => {
+        const firestoreItems = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        setAllItems(firestoreItems);
+        setMatchLoading(false);
+      },
+      (error) => {
+        console.error("Error loading matching items:", error);
+        setMatchLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Smart Match calculation
+  const calculateMatch = (lostItem, foundItem) => {
+    let score = 0;
+    const reasons = [];
+
+    const lostName = (lostItem.itemName || "").toLowerCase();
+    const foundName = (foundItem.itemName || "").toLowerCase();
+
+    const lostCategory = (lostItem.category || "").toLowerCase();
+    const foundCategory = (foundItem.category || "").toLowerCase();
+
+    const lostLocation = (lostItem.location || "").toLowerCase();
+    const foundLocation = (foundItem.location || "").toLowerCase();
+
+    const lostDescription = (
+      lostItem.description || ""
+    ).toLowerCase();
+
+    const foundDescription = (
+      foundItem.description || ""
+    ).toLowerCase();
+
+    // Same category
+    if (
+      lostCategory &&
+      foundCategory &&
+      lostCategory === foundCategory
+    ) {
+      score += 40;
+      reasons.push("Same category");
+    }
+
+    // Same location
+    if (
+      lostLocation &&
+      foundLocation &&
+      lostLocation === foundLocation
+    ) {
+      score += 30;
+      reasons.push("Same location");
+    }
+
+    // Similar item name
+    if (
+      lostName &&
+      foundName &&
+      (lostName.includes(foundName) ||
+        foundName.includes(lostName))
+    ) {
+      score += 20;
+      reasons.push("Similar item name");
+    }
+
+    // Similar description
+    if (
+      lostDescription &&
+      foundDescription &&
+      (lostDescription.includes(foundDescription) ||
+        foundDescription.includes(lostDescription))
+    ) {
+      score += 10;
+      reasons.push("Similar description");
+    }
+
+    return {
+      score,
+      reasons,
+    };
+  };
+
+  // Find best Lost + Found match
+  let bestMatch = null;
+
+  const lostItems = allItems.filter(
+    (item) => item.type === "Lost"
+  );
+
+  const foundItems = allItems.filter(
+    (item) => item.type === "Found"
+  );
+
+  lostItems.forEach((lostItem) => {
+    foundItems.forEach((foundItem) => {
+      const result = calculateMatch(lostItem, foundItem);
+
+      if (
+        result.score > 0 &&
+        (!bestMatch || result.score > bestMatch.score)
+      ) {
+        bestMatch = {
+          lostItem,
+          foundItem,
+          score: result.score,
+          reasons: result.reasons,
+        };
+      }
+    });
+  });
+
+  // Home page
+  const Home = () => {
+    return (
+      <div className="home-page">
+
+        <section className="hero-section">
+          <div className="hero-content">
+
+            <p className="hero-label">
+              SMART CAMPUS LOST & FOUND
+            </p>
+
+            <h1>
+              Lost something?
+              <br />
+              We'll help you find it.
+            </h1>
+
+            <p className="hero-description">
+              CampusFind connects students who have lost
+              items with people who have found them. Find
+              your belongings faster with smart matching.
+            </p>
+
+            <div className="hero-buttons">
+              <button
+                onClick={() => setPage("lost")}
+                className="primary-button"
+              >
+                I Lost Something
+              </button>
+
+              <button
+                onClick={() => setPage("found")}
+                className="secondary-button"
+              >
+                I Found Something
+              </button>
+            </div>
+
+          </div>
+        </section>
+
+        <section className="search-section">
+          <button
+            className="search-box"
+            onClick={() => setPage("browse")}
+          >
+            🔍
+            <span>Search lost and found items...</span>
+          </button>
+        </section>
+
+        {/* Recent Reports */}
+        <section className="recent-section">
+
+          <div className="section-header">
+            <div>
+              <p className="section-label">
+                RECENT REPORTS
+              </p>
+
+              <h2>Items recently reported</h2>
+            </div>
+
+            <button
+              className="view-all-button"
+              onClick={() => setPage("browse")}
+            >
+              View All →
+            </button>
+          </div>
+
+          <div className="recent-grid">
+
+            {recentItems.length === 0 ? (
+              <p>No reports available yet.</p>
+            ) : (
+              recentItems.map((item) => (
+                <div
+                  className="report-card"
+                  key={item.id}
+                >
+
+                  <div className="report-image">
+
+                    {item.photoURL ? (
+                      <img
+                        src={item.photoURL}
+                        alt={item.itemName}
+                      />
+                    ) : (
+                      <div className="no-image">
+                        🔍
+                      </div>
+                    )}
+
+                  </div>
+
+                  <div className="report-card-content">
+
+                    <span
+                      className={
+                        item.type === "Lost"
+                          ? "report-badge lost"
+                          : "report-badge found"
+                      }
+                    >
+                      {item.type}
+                    </span>
+
+                    <h3>{item.itemName}</h3>
+
+                    <p>
+                      📍 {item.location}
+                    </p>
+
+                    <p>
+                      {item.description}
+                    </p>
+
+                  </div>
+
+                </div>
+              ))
+            )}
+
+          </div>
+
+        </section>
+
+        {/* Smart Match */}
+        <section className="smart-match-section">
+
+          <div className="smart-match-header">
+
+            <p className="section-label">
+              SMART MATCH
+            </p>
+
+            <h2>
+              We don't just store reports.
+              <br />
+              We find connections.
+            </h2>
+
+            <p>
+              Our smart matching system compares item
+              descriptions, categories and locations to help
+              connect lost and found reports automatically.
+            </p>
+
+            <button
+              className="view-all-button"
+              onClick={() => setPage("browse")}
+            >
+              Explore Smart Matches →
+            </button>
+
+          </div>
+
+          <div className="smart-match-card">
+
+            {matchLoading ? (
+              <div className="match-message">
+                Finding potential matches...
+              </div>
+            ) : bestMatch ? (
+
+              <>
+                <div className="match-top">
+
+                  <span>
+                    Potential Match
+                  </span>
+
+                  <strong>
+                    {bestMatch.score}% Match
+                  </strong>
+
+                </div>
+
+                <div className="match-items">
+
+                  {/* Lost */}
+                  <div className="match-item">
+
+                    <div className="match-image">
+
+                      {bestMatch.lostItem.photoURL ? (
+                        <img
+                          src={bestMatch.lostItem.photoURL}
+                          alt={bestMatch.lostItem.itemName}
+                        />
+                      ) : (
+                        <div className="no-image">
+                          🔍
+                        </div>
+                      )}
+
+                    </div>
+
+                    <span className="report-badge lost">
+                      LOST
+                    </span>
+
+                    <h3>
+                      {bestMatch.lostItem.itemName}
+                    </h3>
+
+                    <p>
+                      {bestMatch.lostItem.location}
+                    </p>
+
+                  </div>
+
+                  <div className="match-arrow">
+                    ↕
+                  </div>
+
+                  {/* Found */}
+                  <div className="match-item">
+
+                    <div className="match-image">
+
+                      {bestMatch.foundItem.photoURL ? (
+                        <img
+                          src={bestMatch.foundItem.photoURL}
+                          alt={bestMatch.foundItem.itemName}
+                        />
+                      ) : (
+                        <div className="no-image">
+                          🔍
+                        </div>
+                      )}
+
+                    </div>
+
+                    <span className="report-badge found">
+                      FOUND
+                    </span>
+
+                    <h3>
+                      {bestMatch.foundItem.itemName}
+                    </h3>
+
+                    <p>
+                      {bestMatch.foundItem.location}
+                    </p>
+
+                  </div>
+
+                </div>
+
+                <div className="match-reasons">
+
+                  {bestMatch.reasons.map(
+                    (reason, index) => (
+                      <span key={index}>
+                        ✓ {reason}
+                      </span>
+                    )
+                  )}
+
+                </div>
+
+              </>
+
+            ) : (
+
+              <div className="match-message">
+
+                <h3>No match found yet</h3>
+
+                <p>
+                  Add both a lost and a found report
+                  to start matching items.
+                </p>
+
+              </div>
+
+            )}
+
+          </div>
+
+        </section>
+
+      </div>
+    );
+  };
+
   return (
     <div className="app">
 
-      {/* NAVBAR */}
+      {/* Navigation */}
       <nav className="navbar">
 
         <div
           className="logo"
           onClick={() => setPage("home")}
-          style={{ cursor: "pointer" }}
         >
-          Campus<span>Find</span>
+          CampusFind
         </div>
 
         <div className="nav-links">
 
-          <button onClick={() => setPage("home")}>
+          <button
+            onClick={() => setPage("home")}
+          >
             Home
           </button>
 
-          <button onClick={() => setPage("browse")}>
+          <button
+            onClick={() => setPage("browse")}
+          >
             Browse
           </button>
 
-          <a href="#report">
-            Report
-          </a>
+          <button
+            onClick={() => {
+              setPage("home");
 
-          <button onClick={() => setPage("dashboard")}>
+              setTimeout(() => {
+                const reportSection =
+                  document.getElementById("report");
+
+                if (reportSection) {
+                  reportSection.scrollIntoView({
+                    behavior: "smooth",
+                  });
+                }
+              }, 100);
+            }}
+          >
+            Report
+          </button>
+
+          <button
+            onClick={() => setPage("dashboard")}
+          >
             Dashboard
           </button>
 
           <button
-            className="login-btn"
             onClick={() => setPage("login")}
           >
             Login
@@ -78,402 +529,39 @@ function App() {
 
       </nav>
 
-      {/* HERO */}
-      <section className="hero" id="home">
-
-        <div className="hero-content">
-
-          <p className="tagline">
-            SMART CAMPUS LOST & FOUND
-          </p>
-
-          <h1>
-            Lost something?
-            <br />
-            <span>We'll help you find it.</span>
-          </h1>
-
-          <p className="hero-text">
-            CampusFind connects students who have lost items
-            with people who have found them. Find your belongings
-            faster with smart matching.
-          </p>
-
-          <div className="hero-buttons">
-
-            <button
-              className="primary-btn"
-              onClick={() => setPage("lost")}
-            >
-              I Lost Something
-            </button>
-
-            <button
-              className="secondary-btn"
-              onClick={() => setPage("found")}
-            >
-              I Found Something
-            </button>
-
-          </div>
-
-          {/* SEARCH */}
-          <div className="search-box">
-
-            <span>🔍</span>
-
-            <input
-              type="text"
-              placeholder="Search for lost items..."
-              onFocus={() => setPage("browse")}
-            />
-
-            <button onClick={() => setPage("browse")}>
-              Search
-            </button>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* RECENT REPORTS */}
-      <section className="recent-section" id="browse">
-
-        <div className="section-heading">
-
-          <div>
-
-            <p className="small-title">
-              RECENT REPORTS
-            </p>
-
-            <h2>
-              Items recently reported
-            </h2>
-
-          </div>
-
-          <button
-            className="view-btn"
-            onClick={() => setPage("browse")}
-          >
-            View All →
-          </button>
-
-        </div>
-
-        <div className="cards">
-
-          <div className="item-card">
-
-            <div className="item-image">
-              📱
-            </div>
-
-            <div className="item-info">
-
-              <span className="lost-badge">
-                LOST
-              </span>
-
-              <h3>
-                iPhone 15
-              </h3>
-
-              <p>
-                📍 Library • 2 hours ago
-              </p>
-
-              <p className="description">
-                Black iPhone with transparent case.
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="item-card">
-
-            <div className="item-image">
-              🎒
-            </div>
-
-            <div className="item-info">
-
-              <span className="found-badge">
-                FOUND
-              </span>
-
-              <h3>
-                Black Backpack
-              </h3>
-
-              <p>
-                📍 Block A • 5 hours ago
-              </p>
-
-              <p className="description">
-                Black backpack found near classroom.
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="item-card">
-
-            <div className="item-image">
-              🔑
-            </div>
-
-            <div className="item-info">
-
-              <span className="lost-badge">
-                LOST
-              </span>
-
-              <h3>
-                Car Keys
-              </h3>
-
-              <p>
-                📍 Parking Area • Yesterday
-              </p>
-
-              <p className="description">
-                Silver car keys with blue keychain.
-              </p>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* SMART MATCH */}
-      <section className="smart-section">
-
-        <div className="smart-content">
-
-          <p className="small-title">
-            SMART MATCH
-          </p>
-
-          <h2>
-            We don't just store reports.
-            <br />
-            <span>We find connections.</span>
-          </h2>
-
-          <p>
-            Our smart matching system compares item descriptions,
-            categories and locations to help connect lost and found
-            reports automatically.
-          </p>
-
-          <button
-            className="primary-btn"
-            onClick={() => setPage("browse")}
-          >
-            Explore Smart Matches →
-          </button>
-
-        </div>
-
-        <div className="match-card">
-
-          <div className="match-header">
-
-            <span>
-              Potential Match
-            </span>
-
-            <strong>
-              92% Match
-            </strong>
-
-          </div>
-
-          <div className="match-items">
-
-            <div className="match-item">
-
-              <div className="match-icon">
-                👛
-              </div>
-
-              <div>
-
-                <small>
-                  LOST
-                </small>
-
-                <h3>
-                  Black Wallet
-                </h3>
-
-                <p>
-                  Library • Today
-                </p>
-
-              </div>
-
-            </div>
-
-            <div className="match-line">
-              ↕
-            </div>
-
-            <div className="match-item">
-
-              <div className="match-icon">
-                👛
-              </div>
-
-              <div>
-
-                <small>
-                  FOUND
-                </small>
-
-                <h3>
-                  Black Wallet
-                </h3>
-
-                <p>
-                  Library • Today
-                </p>
-
-              </div>
-
-            </div>
-
-          </div>
-
-          <div className="match-reasons">
-
-            <span>
-              ✓ Same category
-            </span>
-
-            <span>
-              ✓ Similar description
-            </span>
-
-            <span>
-              ✓ Same location
-            </span>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* HOW IT WORKS */}
-      <section
-        className="how-section"
-        id="report"
-      >
-
-        <div className="section-heading center">
-
-          <p className="small-title">
-            HOW IT WORKS
-          </p>
-
-          <h2>
-            Find your belongings in 3 simple steps
-          </h2>
-
-        </div>
-
-        <div className="steps">
-
-          <div className="step">
-
-            <div className="step-number">
-              01
-            </div>
-
-            <div className="step-icon">
-              📝
-            </div>
-
-            <h3>
-              Report
-            </h3>
-
-            <p>
-              Report your lost or found item with important details.
-            </p>
-
-          </div>
-
-          <div className="step">
-
-            <div className="step-number">
-              02
-            </div>
-
-            <div className="step-icon">
-              🔎
-            </div>
-
-            <h3>
-              Match
-            </h3>
-
-            <p>
-              CampusFind searches for similar reports automatically.
-            </p>
-
-          </div>
-
-          <div className="step">
-
-            <div className="step-number">
-              03
-            </div>
-
-            <div className="step-icon">
-              🤝
-            </div>
-
-            <h3>
-              Connect
-            </h3>
-
-            <p>
-              Connect with the person who found or lost the item.
-            </p>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* FOOTER */}
-      <footer>
-
-        <div className="footer-logo">
-          Campus<span>Find</span>
-        </div>
-
-        <p>
-          Making campuses smarter, safer and easier for everyone.
-        </p>
-
-        <p className="copyright">
-          © 2026 CampusFind • Built for Hackathon
-        </p>
-
-      </footer>
+      {/* Pages */}
+
+      {page === "home" && <Home />}
+
+      {page === "lost" && (
+        <ReportLost
+          onBack={() => setPage("home")}
+        />
+      )}
+
+      {page === "found" && (
+        <ReportFound
+          onBack={() => setPage("home")}
+        />
+      )}
+
+      {page === "browse" && (
+        <Browse
+          onBack={() => setPage("home")}
+        />
+      )}
+
+      {page === "dashboard" && (
+        <Dashboard
+          onBack={() => setPage("home")}
+        />
+      )}
+
+      {page === "login" && (
+        <Login
+          onBack={() => setPage("home")}
+        />
+      )}
 
     </div>
   );
