@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 function Dashboard({ onBack }) {
   const [activeTab, setActiveTab] = useState("All");
@@ -11,6 +11,8 @@ function Dashboard({ onBack }) {
       status: "Searching",
       location: "Central Library",
       date: "Today",
+      category: "Wallet",
+      description: "Black leather wallet",
       icon: "👛",
     },
     {
@@ -20,6 +22,8 @@ function Dashboard({ onBack }) {
       status: "Potential Match",
       location: "Block A",
       date: "Yesterday",
+      category: "Electronics",
+      description: "Black iPhone 15",
       icon: "📱",
     },
     {
@@ -29,19 +33,117 @@ function Dashboard({ onBack }) {
       status: "Returned",
       location: "Library",
       date: "2 days ago",
+      category: "Books",
+      description: "Blue college notebook",
       icon: "📓",
     },
+    {
+      id: 4,
+      name: "Black Wallet",
+      type: "Found",
+      status: "Potential Match",
+      location: "Central Library",
+      date: "Today",
+      category: "Wallet",
+      description: "Black leather wallet found near entrance",
+      icon: "👛",
+    },
   ];
+
+  /* FILTER REPORTS */
 
   const filteredReports =
     activeTab === "All"
       ? reports
       : reports.filter((report) => report.type === activeTab);
 
+  /* DASHBOARD STATISTICS */
+
+  const totalReports = reports.length;
+
+  const searchingReports = reports.filter(
+    (report) => report.status === "Searching"
+  ).length;
+
+  const returnedReports = reports.filter(
+    (report) => report.status === "Returned"
+  ).length;
+
+  const potentialMatches = reports.filter(
+    (report) => report.status === "Potential Match"
+  ).length;
+
+  /* SMART MATCH CALCULATION */
+
+  const lostReports = reports.filter((report) => report.type === "Lost");
+
+  const foundReports = reports.filter((report) => report.type === "Found");
+
+  const calculateMatch = (lost, found) => {
+    let score = 0;
+
+    if (
+      lost.name.toLowerCase().trim() ===
+      found.name.toLowerCase().trim()
+    ) {
+      score += 40;
+    }
+
+    if (
+      lost.category.toLowerCase() ===
+      found.category.toLowerCase()
+    ) {
+      score += 25;
+    }
+
+    if (
+      lost.location.toLowerCase() ===
+      found.location.toLowerCase()
+    ) {
+      score += 20;
+    }
+
+    const lostWords = lost.description.toLowerCase().split(" ");
+    const foundWords = found.description.toLowerCase().split(" ");
+
+    const commonWords = lostWords.filter((word) =>
+      foundWords.includes(word)
+    );
+
+    if (commonWords.length > 0) {
+      score += 15;
+    }
+
+    return Math.min(score, 100);
+  };
+
+  const smartMatches = useMemo(() => {
+    const matches = [];
+
+    lostReports.forEach((lost) => {
+      foundReports.forEach((found) => {
+        const score = calculateMatch(lost, found);
+
+        if (score >= 50) {
+          matches.push({
+            lost,
+            found,
+            score,
+          });
+        }
+      });
+    });
+
+    return matches.sort((a, b) => b.score - a.score);
+  }, []);
+
+  const topMatch = smartMatches[0];
+
   return (
     <div className="dashboard-page">
 
       {/* TOP BAR */}
+
       <div className="dashboard-topbar">
 
         <button className="back-btn" onClick={onBack}>
@@ -55,12 +157,15 @@ function Dashboard({ onBack }) {
       </div>
 
       {/* MAIN */}
+
       <div className="dashboard-wrapper">
 
         {/* HEADER */}
+
         <div className="dashboard-header">
 
           <div>
+
             <p className="small-title">
               MY DASHBOARD
             </p>
@@ -72,6 +177,7 @@ function Dashboard({ onBack }) {
             <p>
               Track your lost and found reports in one place.
             </p>
+
           </div>
 
           <button
@@ -84,56 +190,71 @@ function Dashboard({ onBack }) {
         </div>
 
         {/* STATS */}
+
         <div className="dashboard-stats">
 
           <div className="stat-card">
+
             <div className="stat-icon purple">
               📋
             </div>
+
             <div>
-              <strong>3</strong>
+              <strong>{totalReports}</strong>
               <span>Total Reports</span>
             </div>
+
           </div>
 
           <div className="stat-card">
+
             <div className="stat-icon orange">
               🔎
             </div>
+
             <div>
-              <strong>2</strong>
+              <strong>{searchingReports}</strong>
               <span>Still Searching</span>
             </div>
+
           </div>
 
           <div className="stat-card">
+
             <div className="stat-icon green">
               ✓
             </div>
+
             <div>
-              <strong>1</strong>
+              <strong>{returnedReports}</strong>
               <span>Items Returned</span>
             </div>
+
           </div>
 
           <div className="stat-card">
+
             <div className="stat-icon blue">
               🤝
             </div>
+
             <div>
-              <strong>2</strong>
+              <strong>{potentialMatches}</strong>
               <span>Potential Matches</span>
             </div>
+
           </div>
 
         </div>
 
         {/* REPORTS SECTION */}
+
         <section className="dashboard-section">
 
           <div className="dashboard-section-heading">
 
             <div>
+
               <h2>
                 My Reports
               </h2>
@@ -141,6 +262,7 @@ function Dashboard({ onBack }) {
               <p>
                 View and manage your submitted reports.
               </p>
+
             </div>
 
             <div className="dashboard-tabs">
@@ -176,7 +298,10 @@ function Dashboard({ onBack }) {
 
             {filteredReports.map((report) => (
 
-              <div className="dashboard-report" key={report.id}>
+              <div
+                className="dashboard-report"
+                key={report.id}
+              >
 
                 <div className="dashboard-report-icon">
                   {report.icon}
@@ -232,7 +357,14 @@ function Dashboard({ onBack }) {
 
                 </div>
 
-                <button className="report-view-btn">
+                <button
+                  className="report-view-btn"
+                  onClick={() =>
+                    alert(
+                      `${report.name}\n\nType: ${report.type}\nLocation: ${report.location}\nStatus: ${report.status}`
+                    )
+                  }
+                >
                   View →
                 </button>
 
@@ -244,7 +376,7 @@ function Dashboard({ onBack }) {
 
         </section>
 
-        {/* SMART MATCH CARD */}
+        {/* SMART MATCH */}
 
         <section className="dashboard-match">
 
@@ -258,20 +390,53 @@ function Dashboard({ onBack }) {
               SMART MATCH
             </p>
 
-            <h2>
-              We found potential matches for you
-            </h2>
+            {topMatch ? (
+              <>
+                <h2>
+                  Potential match found — {topMatch.score}%
+                </h2>
 
-            <p>
-              CampusFind has detected similar items based on
-              category, description and location.
-            </p>
+                <p>
+                  <strong>{topMatch.lost.name}</strong> may match
+                  the found report{" "}
+                  <strong>{topMatch.found.name}</strong>.
+                  Similarity is based on item name, category,
+                  location and description.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2>
+                  No strong matches found yet
+                </h2>
+
+                <p>
+                  We'll compare new lost and found reports
+                  automatically.
+                </p>
+              </>
+            )}
 
           </div>
 
           <button
             className="secondary-btn"
-            onClick={() => alert("Smart Match page coming next!")}
+            onClick={() => {
+              if (topMatch) {
+                alert(
+                  `Smart Match: ${topMatch.score}%\n\n` +
+                  `Lost: ${topMatch.lost.name}\n` +
+                  `Found: ${topMatch.found.name}\n\n` +
+                  `Matching factors:\n` +
+                  `• Item name\n` +
+                  `• Category\n` +
+                  `• Location\n` +
+                  `• Description`
+                );
+              } else {
+                alert("No potential matches available.");
+              }
+            }}
           >
             View Matches →
           </button>
